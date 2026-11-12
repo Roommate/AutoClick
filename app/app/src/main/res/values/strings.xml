@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">自动脚本</string>
+    <string name="title_home">首页</string>
+    <string name="title_dashboard">脚本面板</string>
+    <string name="title_notifications">通知</string>
+    <string name="accessibility_service_description">自动脚本 无障碍服务 —— 用于执行自动点击、长按、滑动等手势操作。必须开启此服务，应用才能正常录制与回放脚本。</string>
+</resources>

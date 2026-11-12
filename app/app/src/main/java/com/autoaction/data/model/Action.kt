@@ -1,0 +1,25 @@
+package com.autoaction.data.model
+
+/** 滑动轨迹上的一个采样点（屏幕坐标） */
+data class TrailPoint(
+    val x: Float,
+    val y: Float
+)
+
+data class Action(
+    val type: ActionType,
+    val x: Int = 0,
+    val y: Int = 0,
+    val startX: Int = 0,
+    val startY: Int = 0,
+    val endX: Int = 0,
+    val endY: Int = 0,
+    val duration: Long = 0,
+    @Deprecated("Use separate DELAY action instead")
+    val baseDelay: Long = 0,
+    val desc: String = "",
+    // 录制到的完整滑动轨迹；为空时按 start/end 直线滑动
+    val path: List<TrailPoint>? = null,
+    val overrideRandomOffset: Int? = null,
+    val overrideRandomDelay: Long? = null
+)
