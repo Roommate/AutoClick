@@ -38,6 +38,7 @@ fun ScriptEditorScreen(
 
     // FAB Menu State
     var showAddMenu by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(scriptId) {
         if (scriptId != null) {
@@ -84,26 +85,28 @@ fun ScriptEditorScreen(
                             checked = isEnabled,
                             onCheckedChange = { isEnabled = it }
                         )
-                        IconButton(onClick = {
-                            scope.launch {
-                                val newScript = Script(
-                                    id = scriptId ?: UUID.randomUUID().toString(),
-                                    name = scriptName,
-                                    loopCount = loopCount.toIntOrNull() ?: 1,
-                                    globalRandomOffset = globalRandomOffset.toIntOrNull() ?: 10,
-                                    globalRandomDelay = globalRandomDelay.toLongOrNull() ?: 200,
-                                    actions = actions,
-                                    isEnabled = isEnabled,
-                                    shortcutConfig = script?.shortcutConfig ?: ShortcutConfig()
-                                )
-                                if (scriptId == null) {
-                                    viewModel.insertScript(newScript)
-                                } else {
-                                    viewModel.updateScript(newScript)
+                        IconButton(
+                            enabled = !isSaving,
+                            onClick = {
+                                if (isSaving) return@IconButton
+                                isSaving = true
+                                scope.launch {
+                                    val newScript = Script(
+                                        id = scriptId ?: UUID.randomUUID().toString(),
+                                        name = scriptName,
+                                        loopCount = loopCount.toIntOrNull() ?: 1,
+                                        globalRandomOffset = globalRandomOffset.toIntOrNull() ?: 10,
+                                        globalRandomDelay = globalRandomDelay.toLongOrNull() ?: 200,
+                                        actions = actions,
+                                        isEnabled = isEnabled,
+                                        shortcutConfig = script?.shortcutConfig ?: ShortcutConfig()
+                                    )
+                                    // 等写库真正完成后再返回，避免界面销毁取消协程导致保存丢失
+                                    viewModel.saveScript(newScript, scriptId == null)
+                                    onNavigateBack()
                                 }
-                                onNavigateBack()
                             }
-                        }) {
+                        ) {
                             Icon(Icons.Default.Check, "保存")
                         }
                     }

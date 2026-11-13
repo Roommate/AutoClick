@@ -4,6 +4,10 @@ local.properties
 .idea/
 .history/
 .DS_Store
+# 发布签名文件，绝对不要提交
+keystore.properties
+*.jks
+*.keystore
 build/
 captures/
 .externalNativeBuild

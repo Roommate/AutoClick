@@ -10,10 +10,13 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
 import com.autoaction.data.local.AppDatabase
+import com.autoaction.data.model.Script
 import com.autoaction.data.repository.ScriptRepository
 import com.autoaction.data.settings.GlobalSettings
 import com.autoaction.data.settings.SettingsRepository
@@ -39,6 +42,8 @@ class FloatingWindowService : OverlayService() {
     private var controlBarView: View? = null
     private var edgeIndicatorView: View? = null
     private val shortcutViews = mutableMapOf<String, View>()
+    // 每个悬浮快捷键对应的最新脚本数据，编辑保存后靠它刷新图标内容
+    private val shortcutStates = mutableMapOf<String, MutableState<Script>>()
     private var controlBarParams: WindowManager.LayoutParams? = null
     private var isControlBarExpanded = false
     private val _shouldExpand = MutableStateFlow(false)
@@ -158,11 +163,19 @@ class FloatingWindowService : OverlayService() {
             shortcutViews[id]?.let { view ->
                 windowManager.removeView(view)
                 shortcutViews.remove(id)
+                shortcutStates.remove(id)
             }
         }
 
-        (newIds - currentIds).forEach { id ->
-            enabledScripts[id]?.let { script ->
+        newIds.forEach { id ->
+            val script = enabledScripts[id] ?: return@forEach
+            val existingState = shortcutStates[id]
+            if (existingState != null) {
+                // 已有的图标：名称、循环次数、动作等被编辑后要刷新内容，不能只创建新的
+                if (existingState.value != script) {
+                    existingState.value = script
+                }
+            } else {
                 createShortcutView(script)
             }
         }
@@ -187,15 +200,18 @@ class FloatingWindowService : OverlayService() {
             y = config.screenY.toInt()
         }
 
+        val scriptState = mutableStateOf(script)
+
         val view = ComposeView(this).apply {
             attachLifecycle(this)
             setContent {
                 val settings by settingsRepository.settings.collectAsState(initial = GlobalSettings())
                 val runningScriptId by AutoActionService.runningScriptId.collectAsState()
+                val currentScript = scriptState.value
                 ScriptShortcutContent(
-                    script = script,
+                    script = currentScript,
                     globalAlpha = settings.shortcutAlpha,
-                    isRunning = runningScriptId == script.id
+                    isRunning = runningScriptId == currentScript.id
                 )
             }
         }
@@ -228,6 +244,7 @@ class FloatingWindowService : OverlayService() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
+                    val currentScript = scriptState.value
                     if (!isDragging) {
                         // Ensure minimal movement to count as click (threshold must be consistent)
                         val dx = Math.abs(event.rawX - initialTouchX)
@@ -235,7 +252,7 @@ class FloatingWindowService : OverlayService() {
                         if (dx < 40 && dy < 40) { // Threshold for click
                             if (AutoActionService.isRunning.value) {
                                 // 运行中点击同一个脚本：停止；点到其它脚本：切换执行
-                                if (AutoActionService.runningScriptId.value == script.id) {
+                                if (AutoActionService.runningScriptId.value == currentScript.id) {
                                     AutoActionService.stopExecution()
                                     android.widget.Toast.makeText(
                                         this@FloatingWindowService,
@@ -243,7 +260,7 @@ class FloatingWindowService : OverlayService() {
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 } else {
-                                    AutoActionService.executeScript(script.id)
+                                    AutoActionService.executeScript(currentScript.id)
                                 }
                             } else {
                                 android.widget.Toast.makeText(
@@ -255,12 +272,15 @@ class FloatingWindowService : OverlayService() {
                         }
                     } else {
                         scope.launch {
-                            val updatedScript = script.copy(
-                                shortcutConfig = script.shortcutConfig.copy(
+                            // 用最新数据（而不是创建图标时的旧快照）写回位置，避免覆盖刚编辑过的名称/循环次数
+                            val latest = scriptState.value
+                            val updatedScript = latest.copy(
+                                shortcutConfig = latest.shortcutConfig.copy(
                                     screenX = params.x.toFloat(),
                                     screenY = params.y.toFloat()
                                 )
                             )
+                            scriptState.value = updatedScript
                             repository.updateScript(updatedScript)
                         }
                     }
@@ -271,6 +291,7 @@ class FloatingWindowService : OverlayService() {
         }
 
         shortcutViews[script.id] = view
+        shortcutStates[script.id] = scriptState
         // Apply current visibility state to this new view
         view.visibility = if (_shortcutsVisible.value) View.VISIBLE else View.GONE
         windowManager.addView(view, params)

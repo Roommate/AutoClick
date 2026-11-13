@@ -39,6 +39,14 @@ class ScriptViewModel(application: Application) : AndroidViewModel(application) 
         repository.insertScript(script)
     }
 
+    /**
+     * 保存脚本（新建或更新）。挂起执行，调用方必须等它返回后再离开界面，
+     * 否则界面销毁会连带取消 viewModelScope，导致写库被中断。
+     */
+    suspend fun saveScript(script: Script, isNew: Boolean) {
+        if (isNew) repository.insertScript(script) else repository.updateScript(script)
+    }
+
     fun updateScript(script: Script) = viewModelScope.launch {
         repository.updateScript(script)
     }

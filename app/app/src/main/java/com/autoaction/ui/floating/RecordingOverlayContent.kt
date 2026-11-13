@@ -60,12 +60,14 @@ fun RecordingOverlayContent(
                 trails.forEach { trail ->
                     val color = if (trail.isLongPress) Color(0xFFFFB300) else Color(0xFFFF5252)
                     drawTrailPath(trail.points, color.copy(alpha = 0.8f))
+                    // 序号直接标在触点位置上，不再单独画在触点上方的点上
                     trail.points.firstOrNull()?.let {
-                        drawCircle(color.copy(alpha = 0.85f), radius = 12.dp.toPx(), center = it)
-                        drawNumberBadge(trail.number, it)
+                        drawNumberBadge(trail.number, it, color)
                     }
-                    trail.points.lastOrNull()?.let {
-                        drawCircle(Color.White, radius = 5.dp.toPx(), center = it)
+                    if (trail.points.size > 1) {
+                        trail.points.lastOrNull()?.let {
+                            drawCircle(Color.White, radius = 5.dp.toPx(), center = it)
+                        }
                     }
                 }
 
@@ -215,13 +217,9 @@ private fun DrawScope.drawTrailPath(points: List<Offset>, color: Color) {
     )
 }
 
-private fun DrawScope.drawNumberBadge(number: Int, anchor: Offset) {
-    val badgeRadius = 13.dp.toPx()
-    val center = Offset(
-        x = anchor.x,
-        y = (anchor.y - 28.dp.toPx()).coerceAtLeast(badgeRadius)
-    )
-    drawCircle(Color(0xFFD32F2F), radius = badgeRadius, center = center)
+private fun DrawScope.drawNumberBadge(number: Int, anchor: Offset, badgeColor: Color) {
+    val badgeRadius = 14.dp.toPx()
+    drawCircle(badgeColor, radius = badgeRadius, center = anchor)
 
     val paint = android.graphics.Paint().apply {
         color = android.graphics.Color.WHITE
@@ -230,6 +228,6 @@ private fun DrawScope.drawNumberBadge(number: Int, anchor: Offset) {
         isAntiAlias = true
         isFakeBoldText = true
     }
-    val baseline = center.y - (paint.descent() + paint.ascent()) / 2f
-    drawContext.canvas.nativeCanvas.drawText(number.toString(), center.x, baseline, paint)
+    val baseline = anchor.y - (paint.descent() + paint.ascent()) / 2f
+    drawContext.canvas.nativeCanvas.drawText(number.toString(), anchor.x, baseline, paint)
 }

@@ -198,43 +198,51 @@ class RecordingService : OverlayService() {
                     return@postFrameCallback
                 }
 
-                val dispatched = service.dispatchGestureToScreen(points, duration) {
-                    // 回放结束后再等一小会儿，确保注入的抬手事件也已送达下层窗口，再恢复录制层触摸
-                    mainHandler.postDelayed({
-                        if (forwardToken == token) {
-                            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-                            if (inputOverlayView === overlay) {
-                                windowManager.updateViewLayout(overlay, params)
-                            }
-                            isForwarding = false
+                fun restoreTouch() {
+                    if (forwardToken != token) return
+                    params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                    if (inputOverlayView === overlay) {
+                        windowManager.updateViewLayout(overlay, params)
+                    }
+                    isForwarding = false
+                }
+
+                fun attemptInject(retriesLeft: Int) {
+                    val dispatched = service.dispatchGestureToScreen(points, duration) {
+                        // 回放结束后再等一小会儿，确保注入的抬手事件也已送达下层窗口，再恢复录制层触摸
+                        mainHandler.postDelayed({ restoreTouch() }, 60L)
+                    }
+                    if (dispatched) {
+                        if (!replayNoticeShown) {
+                            replayNoticeShown = true
+                            Toast.makeText(
+                                this@RecordingService,
+                                "手势已回放；若下层无响应，请检查系统是否限制手势注入",
+                                Toast.LENGTH_LONG
+                            ).show()
                         }
-                    }, 60L)
+                        return
+                    }
+                    // 部分机型第一次注入会被系统拒绝，稍等后重试一次
+                    if (retriesLeft > 0) {
+                        mainHandler.postDelayed({ attemptInject(retriesLeft - 1) }, 120L)
+                    } else {
+                        restoreTouch()
+                        if (!warnedDispatchFailure) {
+                            warnedDispatchFailure = true
+                            Toast.makeText(
+                                this@RecordingService,
+                                "手势注入被系统拒绝，触摸无法穿透",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 }
 
                 // 极端情况下回放回调可能不触发，超时兜底，避免录制层一直无法接收触摸
-                mainHandler.postDelayed({
-                    if (forwardToken == token && isForwarding) {
-                        params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
-                        if (inputOverlayView === overlay) {
-                            windowManager.updateViewLayout(overlay, params)
-                        }
-                        isForwarding = false
-                    }
-                }, duration + 1500L)
+                mainHandler.postDelayed({ restoreTouch() }, duration + 2000L)
 
-                if (dispatched) {
-                    if (!replayNoticeShown) {
-                        replayNoticeShown = true
-                        Toast.makeText(
-                            this@RecordingService,
-                            "手势已回放；若下层无响应，请检查系统是否限制手势注入",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
-                } else if (!warnedDispatchFailure) {
-                    warnedDispatchFailure = true
-                    Toast.makeText(this@RecordingService, "手势注入失败，触摸无法穿透", Toast.LENGTH_LONG).show()
-                }
+                attemptInject(1)
             }
         }
     }
