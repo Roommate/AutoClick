@@ -174,6 +174,11 @@ class RecordingService : OverlayService() {
         val service = AutoActionService.getInstance()
         val overlay = inputOverlayView
 
+        android.util.Log.i(
+            "AutoAction",
+            "forward: service=${service != null} overlay=${overlay != null} points=${points.size} duration=$duration"
+        )
+
         if (service == null || overlay == null) {
             if (!warnedNoAccessibility) {
                 warnedNoAccessibility = true
@@ -200,6 +205,7 @@ class RecordingService : OverlayService() {
 
                 fun restoreTouch() {
                     if (forwardToken != token) return
+                    android.util.Log.i("AutoAction", "forward: restore touchable")
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                     if (inputOverlayView === overlay) {
                         windowManager.updateViewLayout(overlay, params)

@@ -131,6 +131,10 @@ class AutoActionService : AccessibilityService() {
         }
 
         val dispatched = dispatchGesture(gesture, callback, null)
+        android.util.Log.i(
+            "AutoAction",
+            "dispatchGesture points=${points.size} duration=$duration returned=$dispatched"
+        )
         if (!dispatched) {
             finished = true
             onFinished()
