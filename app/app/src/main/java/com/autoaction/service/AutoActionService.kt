@@ -130,16 +130,33 @@ class AutoActionService : AccessibilityService() {
             }
         }
 
-        val dispatched = dispatchGesture(gesture, callback, null)
+        // 注入失败时不要回调 onFinished，交由调用方决定是否重试；否则会提前把录制层恢复成可触摸，
+        // 重试时手势反而会被自己的录制层吃掉（表现为完全不能穿透，还会被记录成新动作）
+        val dispatched = try {
+            dispatchGesture(gesture, callback, null)
+        } catch (t: Throwable) {
+            android.util.Log.e("AutoAction", "dispatchGesture 抛出异常", t)
+            false
+        }
         android.util.Log.i(
             "AutoAction",
             "dispatchGesture points=${points.size} duration=$duration returned=$dispatched"
         )
         if (!dispatched) {
             finished = true
-            onFinished()
         }
         return dispatched
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        instance = this
+        android.util.Log.i("AutoAction", "accessibility service connected")
+    }
+
+    override fun onUnbind(intent: Intent?): Boolean {
+        android.util.Log.i("AutoAction", "accessibility service unbound")
+        return super.onUnbind(intent)
     }
 
     // 音量减键停止正在运行的脚本

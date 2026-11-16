@@ -33,8 +33,8 @@ android {
         applicationId = "com.autoaction"
         minSdk = 24
         targetSdk = 35
-        versionCode = 14
-        versionName = "1.14"
+        versionCode = 17
+        versionName = "1.17"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

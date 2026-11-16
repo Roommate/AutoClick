@@ -49,7 +49,7 @@ fun ScriptListScreen(
                         Text("自动脚本")
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "v1.14",
+                            text = "v1.17",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                         )

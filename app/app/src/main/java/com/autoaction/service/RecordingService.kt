@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.view.Gravity
-import android.view.Choreographer
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
@@ -126,7 +125,10 @@ class RecordingService : OverlayService() {
     private fun handleGesture(points: List<TrailPoint>, duration: Long) {
         if (points.isEmpty()) return
         // 注入回弹的手势不记录，避免一次点击被记成两次
-        if (isForwarding) return
+        if (isForwarding) {
+            android.util.Log.i("AutoAction", "forward: 收到注入回弹（说明录制层当时仍可触摸）")
+            return
+        }
 
         // 录制层里的坐标是相对悬浮窗的，回放手势必须用绝对屏幕坐标
         val screenPoints = toScreenPoints(points)
@@ -193,28 +195,43 @@ class RecordingService : OverlayService() {
         val token = ++forwardToken
         // 先让录制层不接收触摸，回放的手势才会落到下层应用
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-        windowManager.updateViewLayout(overlay, params)
+        // Android 12+ 会拦截"穿过不受信任悬浮窗"的触摸：窗口只要可见且 alpha 较高，
+        // 即使标记为不可触摸，下层应用也收不到事件。注入期间把窗口设为全透明以绕开限制
+        params.alpha = 0f
+        try {
+            windowManager.updateViewLayout(overlay, params)
+        } catch (t: Throwable) {
+            android.util.Log.e("AutoAction", "updateViewLayout(不可触摸) 失败", t)
+            isForwarding = false
+            return
+        }
 
-        // 窗口标志需要在下一次布局后才会生效，等两帧再注入，尽量降低延迟
-        Choreographer.getInstance().postFrameCallback {
-            Choreographer.getInstance().postFrameCallback {
+        // 窗口标志要等系统完成一次 relayout 才生效。按帧等待在部分机型上不够（relayout 与输入窗口
+        // 区域更新不在同一帧），这里改用固定延时，保证注入时录制层确实已不可触摸
+        mainHandler.postDelayed({
                 if (inputOverlayView !== overlay) {
                     isForwarding = false
-                    return@postFrameCallback
+                    return@postDelayed
                 }
 
                 fun restoreTouch() {
-                    if (forwardToken != token) return
+                    if (forwardToken != token || !isForwarding) return
                     android.util.Log.i("AutoAction", "forward: restore touchable")
                     params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+                    params.alpha = 1f
                     if (inputOverlayView === overlay) {
-                        windowManager.updateViewLayout(overlay, params)
+                        try {
+                            windowManager.updateViewLayout(overlay, params)
+                        } catch (t: Throwable) {
+                            android.util.Log.e("AutoAction", "updateViewLayout(恢复触摸) 失败", t)
+                        }
                     }
                     isForwarding = false
                 }
 
                 fun attemptInject(retriesLeft: Int) {
                     val dispatched = service.dispatchGestureToScreen(points, duration) {
+                        android.util.Log.i("AutoAction", "forward: 注入回放完成")
                         // 回放结束后再等一小会儿，确保注入的抬手事件也已送达下层窗口，再恢复录制层触摸
                         mainHandler.postDelayed({ restoreTouch() }, 60L)
                     }
@@ -249,8 +266,7 @@ class RecordingService : OverlayService() {
                 mainHandler.postDelayed({ restoreTouch() }, duration + 2000L)
 
                 attemptInject(1)
-            }
-        }
+        }, 150L)
     }
 
     private fun addDelayIfNeeded(currentActionStartTime: Long) {
@@ -360,7 +376,13 @@ class RecordingService : OverlayService() {
         _instance = null
         _isRecording.value = false
         _actionCount.value = 0
-        inputOverlayView?.let { windowManager.removeView(it) }
+        inputOverlayView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (t: Throwable) {
+                android.util.Log.e("AutoAction", "removeView 失败", t)
+            }
+        }
 
         // 录制结束时恢复显示原始控制条
         FloatingWindowService.getInstance()?.showControlBar()
